@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "./demo-link";
 import { useState } from "react";
 import type { Marketplace } from "@/domain/models";
 import { conversations, orders } from "@/data/mock";

@@ -1,6 +1,6 @@
 "use client";
 import Image from "next/image";
-import Link from "next/link";
+import Link from "./demo-link";
 import { useState } from "react";
 import type { Marketplace, Product } from "@/domain/models";
 import { reviews, sellers } from "@/data/mock";

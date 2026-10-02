@@ -1,6 +1,6 @@
 "use client";
 import Image from "next/image";
-import Link from "next/link";
+import Link from "./demo-link";
 import type { Product } from "@/domain/models";
 import { sellers } from "@/data/mock";
 import { money } from "@/domain/commerce";

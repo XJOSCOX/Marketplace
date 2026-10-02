@@ -1,5 +1,8 @@
 import { notFound } from "next/navigation";
-import { CommerceApp } from "@/components/commerce-app";
+import { protectPage } from "@/auth/protect-page";
+import { LiveWorkspace } from "@/components/live-workspace";
+import { Empty } from "@/components/ui";
+import { AppError } from "@/domain/errors";
 export default async function Page({
   params,
 }: {
@@ -20,5 +23,24 @@ export default async function Page({
       ].includes(segments[0]))
   )
     notFound();
-  return <CommerceApp tenant="goxavni" segments={segments} admin />;
+  let auth;
+  try {
+    auth = await protectPage(
+      "/admin" + (segments.length ? "/" + segments.join("/") : ""),
+      undefined,
+      "admin",
+    );
+  } catch (error) {
+    if (error instanceof AppError)
+      return (
+        <Empty
+          title="Access denied"
+          text={error.message}
+          href="/"
+          action="Go home"
+        />
+      );
+    throw error;
+  }
+  return <LiveWorkspace auth={auth} area="admin" segments={segments} />;
 }

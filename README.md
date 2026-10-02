@@ -1,33 +1,32 @@
 # GoXAvni Commerce
 
-A multi-tenant commerce frontend with a curated storefront and seller, marketplace-owner, and platform workspaces.
+Multi-tenant commerce with a responsive frontend, Supabase Auth, PostgreSQL RLS, and versioned APIs.
 
-## Run locally
+## Run
 
-Use Node.js 22.18+ and npm:
+Node.js 22.18+:
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Open [the marketplace](http://localhost:3000). No environment variables or accounts are required.
+Without Supabase configuration, [the storefront](http://localhost:3000) runs as a labeled browser-local demo. Use `/demo/m/goxavni/seller`, `/demo/m/goxavni/owner`, and `/demo/admin` for mock workspaces. Real private routes require authentication and do not trust demo state. Production demo fallback requires explicit `ALLOW_DEMO=true`.
 
-## Explore
+## Connect Supabase
 
-- `/m/goxavni` — HYBRID marketplace
-- `/m/atelier` — single-owner STORE
-- `/m/makers` — third-party MARKETPLACE
-- `/m/goxavni/seller` — seller studio (with demo seller selector)
-- `/m/goxavni/owner` — marketplace management
-- `/admin` — platform administration
-- `/api/v1/marketplaces/goxavni/products` — read-only mock catalog API
+Copy `.env.example` to `.env.local`, configure the public project URL, publishable/anon key, and exact `APP_ORIGIN`, then apply the migrations. Never use a service-role key in this application.
 
-The footer links the workspaces and tenants. Changes to listings, cart, favorites, messages, profile, and settings persist in this browser. Clear the `commerce-demo-v1` localStorage key to reset. The API returns seed fixtures; it does not reflect browser-local changes.
+```sh
+supabase start
+supabase migration up --local
+```
 
-Authentication, Supabase, payments, production storage, message delivery, domain provisioning, and checkout submission are intentionally not implemented. Product photographs are remote sample images from Unsplash.
+For a disposable local database, `supabase db reset --local` applies migrations and the development seed **while deleting existing local data**. Hosted migrations are manual; see [DATABASE.md](docs/DATABASE.md). Seed users have no passwords or logins; create/confirm a real test account and provision roles using trusted SQL. Nothing automatically resets or changes a remote database.
 
-## Checks
+The connected app supports real catalogs, accounts, role-checked workspaces, cart operations, seller listing edits, inventory reads, and owner branding/mode/commission updates. Payments and checkout submission remain deferred. Other management and messaging workflows retain clearly identified Phase 3 placeholders; the complete original UI remains in the isolated demo.
+
+## Validation
 
 ```sh
 npm run lint
@@ -35,6 +34,10 @@ npm test
 npm run build
 ```
 
-With the local server running, `npm run test:smoke` also checks all 40 main page routes, negative routes, and catalog API scoping/search.
+With an unconfigured development server running: `npm run test:smoke` checks 42 public/demo/auth routes, protected redirects, and safe API errors.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for domain models, tenant rules, roles, route coverage, and the proposed shared backend for web, Android, iOS, and public API clients.
+`npm run test:integration` runs only when explicitly configured with `RUN_SUPABASE_INTEGRATION=true` and a development Supabase project. Normal tests run migration and RLS assertions against embedded PostgreSQL without Docker or credentials. See the database guide for limitations and optional token setup.
+
+- [Architecture](ARCHITECTURE.md)
+- [Database and setup](docs/DATABASE.md)
+- [Authorization and RLS](docs/AUTHORIZATION.md)

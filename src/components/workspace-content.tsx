@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "./demo-link";
 import type { Marketplace, Product } from "@/domain/models";
 import { memberships, orders, sellers, users } from "@/data/mock";
 import { money, sellerAllowed } from "@/domain/commerce";

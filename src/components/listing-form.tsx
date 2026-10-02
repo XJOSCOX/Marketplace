@@ -1,6 +1,6 @@
 "use client";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import Link from "./demo-link";
+import { useRouter, usePathname } from "next/navigation";
 import type { Marketplace, Product } from "@/domain/models";
 import { categories } from "@/data/mock";
 import { useCommerce } from "./commerce-provider";
@@ -20,6 +20,7 @@ export function Listing({
 }) {
   const { update, notify } = useCommerce();
   const router = useRouter();
+  const path = usePathname();
   if (editing && !product)
     return (
       <Empty
@@ -85,7 +86,9 @@ export function Listing({
               : [...s.products, item],
           }));
           notify(product ? "Listing updated" : "Listing created");
-          router.push(`${base}/products`);
+          router.push(
+            `${path.startsWith("/demo/") ? "/demo" : ""}${base}/products`,
+          );
         }}
       >
         <label>

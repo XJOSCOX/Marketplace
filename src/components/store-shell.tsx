@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "./demo-link";
 import { usePathname } from "next/navigation";
 import type { Marketplace } from "@/domain/models";
 import { categories, sellers } from "@/data/mock";
@@ -15,7 +15,7 @@ export function StoreShell({
 }) {
   const { state } = useCommerce();
   const path = usePathname();
-  const base = `/m/${m.slug}`;
+  const base = `${path.startsWith("/demo/") ? "/demo" : ""}/m/${m.slug}`;
   const count = cartLines(
     state.cart,
     catalogFor(m, state.products, sellers),

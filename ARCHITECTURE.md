@@ -1,115 +1,123 @@
-# GoXAvni Commerce architecture
+# GoXAvni Commerce — Phase 2
 
-## Scope
-
-This is a navigable frontend prototype built with Next.js App Router, React, TypeScript, and Tailwind CSS v4. It includes a public marketplace, seller studio, marketplace management, and platform administration. There is no authentication, payment processing, Supabase connection, production database, or real message delivery.
+GoXAvni Commerce is a multi-tenant Next.js App Router application with a Supabase/PostgreSQL foundation. The original frontend remains available as an explicitly isolated development demo. Configured deployments read real catalogs, authenticate with Supabase, and authorize private operations on the server and in PostgreSQL. Payments and order placement are not implemented.
 
 ## Directory structure
 
 ```text
 src/
   app/
-    layout.tsx                    Global styles and demo state provider
-    page.tsx                      Redirect to the default public tenant
-    m/[tenant]/[[...segments]]/    Validated tenant route entry
-    admin/[[...segments]]/         Platform route entry
-    api/v1/marketplaces/[marketplaceId]/products/  Read-only mock catalog API
-    globals.css                   Tailwind entry and shared responsive design system
-    not-found.tsx                 Route fallback (client shell handles demo hydration)
-  components/
-    commerce-app.tsx              Route-to-view composition and tenant resolution
-    commerce-provider.tsx         Browser-local demo state and notifications
-    store-shell.tsx               Shared storefront header, navigation, footer
-    product-card.tsx              Reusable product discovery card
-    store-pages.tsx               Exports focused home, browse, cart, detail and account views
-    workspace.tsx                 Shared dashboard navigation and layout
-    workspace-content.tsx         Tenant/seller reports and management tables
-    workspace-settings.tsx        Marketplace and seller settings forms
-    listing-form.tsx              Create/edit listing form
-    data-table.tsx                Searchable, horizontally scrollable record table
-    ui.tsx                        Icons, headings and empty states
+    m/[tenant]/[[...segments]]/   Tenant route validation and server authorization
+    admin/[[...segments]]/        Protected global administration
+    auth/                        Sign-in/up, PKCE callback, email confirmation
+    demo/[[...segments]]/         Explicit fixture-only workspaces
+    api/v1/                      JSON APIs for catalog, identity, cart, listings, settings
+  auth/                          Supabase identity verification, page guards, auth actions
+  api/mutations.ts               CSRF-origin and bounded JSON-body handling
+  lib/supabase/                  Public configuration and request-scoped server clients
   domain/
-    models.ts                     Framework-independent domain interfaces
-    commerce.ts                   Tenant/mode catalog selection, cart joins, money display
-  data/mock.ts                    Deterministic, related sample records
-tests/commerce.test.mjs            Tenant isolation, mode and cart relationship tests
+    models.ts                    Original demo models (all Phase 1 concepts)
+    catalog.ts                   Database-backed public DTOs with string minor-unit amounts
+    authorization.ts             Independently testable permission checks
+    api.ts, listing.ts           UUID, pagination, redirect, money and listing validation
+    commerce.ts                  Preserved demo catalog/cart rules
+    errors.ts                    Safe JSON error contract
+  data-access/                   Supabase query adapters
+  services/                      Catalog, cart, seller-listing and marketplace operations
+  components/
+    live-*                       Database-backed storefront, account, workspace and forms
+    auth-form.tsx                Shared sign-in/sign-up form
+    commerce-provider.tsx        Demo-only localStorage state
+    home/browse/product-*/...    Preserved mock storefront and workspaces
+    ui.tsx, data-table.tsx        Shared design primitives
+  data/mock.ts                   Deterministic prototype fixtures
+  proxy.ts                       Cookie-session refresh (not the authorization boundary)
+supabase/
+  migrations/                    Schema/RLS, cart transaction, listing transaction
+  seed.sql                       Password-free development fixtures
+  config.toml                    Local Supabase configuration
+scripts/generate-seed.mjs         Deterministic SQL seed generator
+tests/                           Unit, embedded PostgreSQL, HTTP and optional Supabase tests
+docs/DATABASE.md                 Schema, money, setup and bootstrap procedures
+docs/AUTHORIZATION.md             Identity, roles, policies and security boundaries
 ```
 
-Routes share shells and primitives instead of copying pages. Optional catch-all route entries keep the initial route tree compact; domain logic remains independent of the router. As features grow, move their view components into feature folders and replace catch-all dispatch with explicit nested routes and server layouts. The mock provider is intentionally a small React context, rather than a state-management dependency or a generalized repository framework.
+The boundaries are intentionally small: route adapters → services → data access/SQL. Business authorization, money representation, catalog eligibility, and cart validation do not depend on React. UI forms call versioned JSON APIs; no service-role client or browser-owned authorization data is used.
 
-## Domain concepts
+## Domain and tenant model
 
-- **User** is a global identity, not a separate account per role. Platform roles are stored separately from marketplace memberships.
-- **Marketplace** is the tenant boundary, with its own brand, mode, owner, commission configuration, and eventual domain.
-- **MarketplaceMembership** associates a user with a tenant and an array of roles. Membership does not imply access to other tenants.
-- **Seller** is a tenant-specific selling business associated with a user. `isOwner` identifies the marketplace owner's own selling entity. **Store** is the seller's storefront identity.
-- **Product**, **ProductVariant**, and **Category** form the catalog. A product belongs to a seller and category in the same tenant. Variants have their own SKU, price, and stock. Draft products are excluded from public discovery.
-- **Cart** and **CartItem** model a buyer's tenant-specific bag. The browser stores line items; each line carries its tenant ID. Variant joins determine price and reject mismatched tenant/product/variant relationships.
-- **Order** and **OrderItem** preserve a purchase snapshot and seller attribution. Seller reports include only that seller's items, including for future mixed-seller orders.
-- **Review** associates a rating and comment with a product and user in a tenant.
-- **Conversation** identifies participants and a seller; **Message** belongs to that tenant and conversation.
+The domain includes User/Profile, Marketplace, MarketplaceMembership, Seller, Store, Product, ProductVariant, Category, Cart, CartItem, Order, OrderItem, Review, Conversation, ConversationParticipant, and Message. Global users have multiple tenant memberships; a selling business and its storefront are tenant-specific. Products have independently priced/stocked variants. Orders retain seller-attributed line snapshots. Conversations have explicit participants.
 
-All requested interfaces are in `src/domain/models.ts`. Mock monetary values are USD decimal numbers for display. A backend should use integer minor units plus explicit currency, calculate totals on the server, and preserve immutable order-line snapshots.
+All database identities are UUIDs. Tenant-owned rows carry `marketplace_id`; composite foreign keys prevent cross-tenant references and inconsistent product/seller/variant attribution. Public routes resolve a tenant slug to a stable database ID. User-supplied tenant IDs select a resource, not an authorization context. Identity and relationship fields cannot be reassigned by ordinary updates. A future verified custom-domain registry can resolve hostnames to the same tenant IDs.
 
-## Tenant model
+GoXAvni is a normal HYBRID seed tenant. Atelier Living is STORE, and Makers Collective is MARKETPLACE. SQL derives owner inventory from the seller's `user_id` and marketplace's `owner_user_id`; no client flag determines ownership. Public SQL catalog views and cart mutations enforce the mode, marketplace/category/seller/product/variant status. Mode changes preserve excluded inventory for management.
 
-The seed contains three tenants:
+## Roles and authentication
 
-| Tenant            | Mode        | Catalog visibility                    |
-| ----------------- | ----------- | ------------------------------------- |
-| GoXAvni           | HYBRID      | Owner and third-party seller products |
-| Atelier Living    | STORE       | Owner products only                   |
-| Makers Collective | MARKETPLACE | Third-party seller products only      |
+A user may hold buyer, seller, marketplace_owner, and marketplace_staff roles simultaneously across memberships. Platform administrator is a separate database allowlist. Supabase Auth supplies the single identity; signup creates only a profile. Server helpers verify the user and load database grants, then RLS checks the same subject. Private seller, owner, and admin pages are guarded before rendering. Seller pages derive the seller from the authenticated identity, replacing the mock selector.
 
-GoXAvni is a normal fixture, not a special branch in commerce rules. `/` is the deployment's default-tenant redirect; reusable components receive tenant data. Tenant slugs resolve to stable IDs. Marketplace-owned records carry `marketplaceId`, including nested variants and order lines. Public catalogs require an active product and an eligible seller in the same tenant. Changing operating mode hides ineligible sellers' products while preserving their records. Platform views deliberately aggregate tenants and label each record's tenant.
+Browser sessions use Supabase SSR cookies and proxy refresh. APIs support both verified cookies and bearer tokens for mobile. No localStorage identity, URL role, signup metadata, caller price, or arbitrary seller ID grants permission. See [AUTHORIZATION.md](docs/AUTHORIZATION.md) for the policy matrix and bootstrap constraints.
 
-The footer switches between tenant storefronts. Cart lines, favorites (through globally unique product IDs plus scoped catalogs), messages, products, inventory, and workspace settings remain isolated in the displayed tenant. Branding and commission edits update only the chosen tenant. The browser stores all demo fixtures together for convenience; this is **not a security boundary**.
+## Routes
 
-## Roles
+Tenant routes retain the `/m/:tenant` prefix:
 
-Supported roles are buyer, seller, marketplace owner, marketplace staff, and platform administrator. A user can hold several tenant roles and participate in several marketplaces. Platform administrator is a global capability. Production authorization will derive permissions from the authenticated identity and database membership; a URL, browser state, or claimed tenant ID must never authorize access.
+| Area        | Paths                                                                                                                                                                                                     |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Public      | `/`, `/products`, `/category/:slug`, `/product/:uuid`, `/store/:sellerUuid`                                                                                                                               |
+| Account     | `/cart`, `/checkout`, `/favorites`, `/orders`, `/messages`, `/profile`                                                                                                                                    |
+| Seller      | `/seller`, `/seller/products`, `/seller/listing`, `/seller/listing/:uuid`, `/seller/orders`, `/seller/inventory`, `/seller/sales`, `/seller/payouts`, `/seller/settings`                                  |
+| Marketplace | `/owner`, `/owner/setup`, `/owner/branding`, `/owner/store-settings`, `/owner/sellers`, `/owner/products`, `/owner/orders`, `/owner/customers`, `/owner/analytics`, `/owner/commission`, `/owner/domains` |
+| Global      | `/admin`, `/admin/marketplaces`, `/admin/users`, `/admin/sellers`, `/admin/transactions`, `/admin/disputes`, `/admin/moderation`                                                                          |
+| Auth        | `/auth/sign-in`, `/auth/sign-up`, `/auth/callback`, `/auth/confirm`                                                                                                                                       |
+| Demo        | `/demo/m/:tenant/...`, `/demo/admin/...` (unconfigured development only)                                                                                                                                  |
 
-For evaluation, all workspaces are open and the seller studio includes an explicit seller selector. This is role simulation, not authentication or authorization. The current customer is the sample user Alex. The selector intentionally lets evaluators inspect either seller without creating accounts.
+The root redirects to the deployment's default GoXAvni tenant; reusable business rules do not special-case it. App Router catch-all entries validate supported paths and dispatch to focused components. Unknown resources fail with not-found or explicit errors. Private pages are never opened by demo state.
 
-## Route structure
+## Database-backed behavior
 
-Prefix tenant routes with `/m/:tenant`:
+With Supabase configured:
 
-| Area                        | Paths                                                                                                                                                                                                     |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Public discovery            | `/`, `/products?q=...&sort=...`, `/category/:slug`, `/product/:id`, `/store/:sellerId`                                                                                                                    |
-| Customer                    | `/cart`, `/checkout`, `/favorites`, `/orders`, `/messages`, `/profile`                                                                                                                                    |
-| Seller                      | `/seller`, `/seller/products`, `/seller/listing`, `/seller/listing/:id`, `/seller/orders`, `/seller/inventory`, `/seller/sales`, `/seller/payouts`, `/seller/settings`                                    |
-| Marketplace owner           | `/owner`, `/owner/setup`, `/owner/branding`, `/owner/store-settings`, `/owner/sellers`, `/owner/products`, `/owner/orders`, `/owner/customers`, `/owner/analytics`, `/owner/commission`, `/owner/domains` |
-| Platform (no tenant prefix) | `/admin`, `/admin/marketplaces`, `/admin/users`, `/admin/sellers`, `/admin/transactions`, `/admin/disputes`, `/admin/moderation`                                                                          |
+- Public homepage, categories, paginated/searchable catalog, product details, variants, and seller storefronts read real rows.
+- Sign-up, sign-in, confirmation, sign-out, session refresh, and server-guarded workspaces are connected.
+- Authenticated carts support atomic additions, removals, own-cart reads, and exact database-derived totals. Cart additions do not reserve stock.
+- Sellers can create/edit their own listings and Original variant price/stock through a transactional RPC. Inventory and attributable order lines are live reads.
+- Owners/admins can update branding, operating mode, and commission basis points. Staff cannot modify owner-only settings.
+- Tenant management reads products, sellers, orders, and membership-based customer identifiers. Platform views read marketplaces, profiles, sellers, and order transaction snapshots under global authorization.
+- Buyers read their own orders and participant-authorized messages. Private data never falls back to fixtures.
 
-Unknown tenants, categories, known cross-tenant product IDs, and unsupported top-level routes return a 404. Browser-created product IDs are resolved in the client and show an unavailable state if missing. Forms use ordinary HTML validation and labeled inputs. Navigation, tables, cards, dashboard grids, and purchasing flows adapt to phone and desktop widths.
+Some Phase 1 screens remain prototype-only workflows: detailed analytics, payouts, custom domains, disputes, moderation queues, seller onboarding/settings, shipping/return settings, profile editing, favorites persistence, and conversation composition. Real-mode routes explicitly identify remaining work instead of fabricating reports or storing business changes in localStorage. The database already defines secure review and conversation/message policies; full UI/API workflows for those resources are deferred. No payments, order-placement API, production order writer, media uploads, or fulfillment are present.
 
-## Mock-data architecture
+## API and money contracts
 
-`data/mock.ts` provides three tenants, six seller entities, 24 products, 48 variants, categories, memberships, orders, reviews, conversations, and messages. Catalog and cart services are pure functions. The React context adds mutable products, marketplace configuration, cart lines, favorites, profile, local messages, and review-resolution state. These persist under `commerce-demo-v1` in localStorage, with a hydration gate and an in-memory fallback if browser storage is unavailable. Clear that key to reset the demo. Browser tabs are not synchronized.
+| Method and path                                       | Behavior                                                        |
+| ----------------------------------------------------- | --------------------------------------------------------------- |
+| `GET /api/v1/marketplaces/:uuid/products`             | Public database catalog; `q`, category slug, `page`, `pageSize` |
+| `GET /api/v1/me`                                      | Verified identity and own memberships                           |
+| `GET /api/v1/marketplaces/:uuid/cart`                 | Own cart and current server-calculated amounts                  |
+| `POST /api/v1/marketplaces/:uuid/cart`                | Add `{ variantId, quantity }`; no client prices                 |
+| `DELETE /api/v1/marketplaces/:uuid/cart?itemId=:uuid` | Remove an item from the verified user's cart                    |
+| `POST /api/v1/marketplaces/:uuid/listings`            | Create/edit an authorized seller listing                        |
+| `PATCH /api/v1/marketplaces/:uuid/settings`           | Owner/admin-only settings and commission changes                |
 
-Implemented interactions include searching/filtering/sorting, variant selection, stock-limited cart additions and quantity edits, favorite toggles, profile updates, locally saved messages, listing creation/editing with draft/active visibility, inventory edits, marketplace setup/mode/branding/commission edits, record filtering, and resolving sample administrative reviews. Orders and financial reports are deterministic fixtures. Checkout, payouts, and custom domains explicitly remain placeholders. Shipping, seller settings, and returns are saved configuration previews; they do not trigger fulfillment. New listings use a sample image; image uploads are deferred. Sample images load from Unsplash and need an internet connection.
+Success responses contain `{ data }`, with catalog `{ meta: { marketplaceId, currency, page, pageSize, total, hasNext, source } }`. Errors are `{ error: { code, message } }` with appropriate status and no raw database details. Catalog sorting uses `created_at` plus ID for deterministic offset pagination. Default page size is 20, maximum 100, and page number is capped at 10,000. UUID resource IDs replace fixture names at real API boundaries. APIs never use demo fallback data.
 
-### API starting point
+Canonical money is PostgreSQL BIGINT in integer minor units. Public DTOs encode amounts as decimal strings; services use `BigInt` arithmetic and currency exponents for display. SQL bounds direct-driver values to the exact JavaScript integer range. See [DATABASE.md](docs/DATABASE.md) for constraints. Legacy floating-point prototype display models remain exclusively in the isolated demo, not production services.
 
-`GET /api/v1/marketplaces/:marketplaceId/products?q=mug&category=home` returns `{ data, meta }`; unknown tenants return a typed error envelope and HTTP 404. It shares catalog rules with the UI. It exposes public fixture products only. The endpoint intentionally reads deterministic server fixtures, **not browser-local edits**. It is a contract example for the future backend, not a second mutable datastore. There are no write or private-data endpoints.
+## Demo compatibility
 
-## Proposed backend architecture
+With no Supabase environment variables, development public pages retain the original localStorage demo and display a banner. `/demo/m/goxavni/seller` and `/demo/admin` retain interactive fixture workspaces. Links and listing saves stay within the demo prefix. These pages have no real database access. Real seller/owner/admin URLs still redirect unauthenticated users to sign-in.
 
-1. Keep a modular TypeScript service layer for catalog, memberships, sellers, carts, orders, conversations, and tenant configuration. Start with Next.js route handlers as HTTP adapters, so services can later move to a separate service without changing client contracts.
-2. Add PostgreSQL (potentially via Supabase) behind repositories that require explicit tenant context. Use `(marketplace_id, id)` composite constraints or equivalent tenant-safe foreign keys for categories, sellers, variants, order lines, and messages. Add tenant-leading indexes for common queries. Use row-level security as defense in depth alongside service authorization.
-3. Authenticate a global user and resolve membership/permissions server-side. Separate platform administration policies from tenant permissions, and check seller ownership for writes. Custom hosts should resolve through a verified domain registry, never a trusted arbitrary request header.
-4. Define versioned JSON contracts, schema validation, consistent error codes, pagination, and an OpenAPI specification. Publish typed clients when the real endpoints stabilize. Scope cache keys, object-storage paths, rate limits, audit logs, and background jobs by tenant.
-5. Introduce transactional stock reservation, idempotent order placement, server-calculated taxes/shipping/commission, immutable price snapshots, and payment webhook reconciliation together with the payment integration. Never trust cart prices, inventory, roles, or totals supplied by clients.
-6. Add private uploads/object storage, async notifications, conversation access checks, and observability. Apply audit trails to moderation, role changes, and platform operations.
+Production requires `ALLOW_DEMO=true` to expose this fallback. Providing only half the Supabase configuration is an error, not an invitation to fall back. Configured connection/query failures also never switch to mock data. The demo remains under the existing `commerce-demo-v1` localStorage key, separate from live sessions and database state.
 
-No part of this proposed infrastructure is configured by the prototype.
+## Android and future backend evolution
 
-## Android, iOS, and public API
+Android can authenticate against the same Supabase Auth project and send its access token to versioned JSON APIs. The API server verifies the token, resolves database membership, and uses the caller-scoped Supabase client so RLS remains effective. Android does not need Next.js server actions or browser cookies. Future iOS and public API clients use the same stable UUID/decimal-string contracts. Introduce an OpenAPI specification, generated Kotlin/Swift/TypeScript clients, API credential scopes, rate limiting, and cursor pagination as client needs grow.
 
-Android will call the same HTTPS `/api/v1` endpoints as web, passing its authenticated bearer token and tenant context. It will not depend on React Server Actions, Next.js rendering, browser cookies, or direct database access. A future iOS client follows the same contract. An OpenAPI specification can generate Kotlin and Swift clients while TypeScript uses the same DTO definitions. Pagination, structured errors, authorization, idempotent mutations, and server-calculated totals apply consistently across all clients. Public API credentials will eventually have explicit tenant and operation scopes, with rate limits and versioned compatibility.
+The current server layer can stay inside Next.js or move to a separate service behind unchanged contracts. Phase 3 should add server-calculated order placement with stock reservation, idempotency, shipping/tax/commission snapshots, transactional outbox/audit events, storage uploads, messaging workflows, and full management operations. Payment processing is intentionally outside this phase.
 
-## Verification
+## Verification and environment
 
-Run `npm run lint`, `npm test`, and `npm run build`. Domain tests cover all operating modes, changing modes, draft exclusion, tenant/variant isolation, and variant-specific totals. Browser evaluation should include a product-to-cart flow, reload persistence, tenant switching, a new listing, mobile layout, and a management dashboard. The demo has no production credentials or environment variables.
+Run `npm run lint`, `npm test`, and `npm run build`. `npm test` includes pure authorization/validation tests, the original demo domain tests, and actual migration/RLS/RPC execution in embedded PostgreSQL (PGlite). `npm run test:smoke` checks the unconfigured local demo, private redirects, and safe API failures. `npm run test:integration` is a separate opt-in suite for real Supabase Auth/PostgREST; it skips without explicit environment configuration.
+
+Configure `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `APP_ORIGIN` manually. Optional `ALLOW_DEMO` controls only the unconfigured production demo. No service-role key, password, or JWT secret belongs in the application. Setup and manual migration/bootstrap commands are in [DATABASE.md](docs/DATABASE.md).

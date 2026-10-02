@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CommerceProvider } from "@/components/commerce-provider";
+import { demoEnabled } from "@/lib/supabase/config";
 import "./globals.css";
 export const metadata: Metadata = {
   title: "GoXAvni Commerce — Good finds. Great possibilities.",
@@ -17,9 +18,13 @@ export default function RootLayout({
         <a className="skip-link" href="#app-content">
           Skip to content
         </a>
-        <CommerceProvider>
-          <div id="app-content">{children}</div>
-        </CommerceProvider>
+        <div id="app-content">
+          {demoEnabled() ? (
+            <CommerceProvider>{children}</CommerceProvider>
+          ) : (
+            children
+          )}
+        </div>
       </body>
     </html>
   );
