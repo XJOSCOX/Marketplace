@@ -1,4 +1,4 @@
-# GoXAvni Commerce — Phase 2
+# GoXAvni Commerce — Phase 3
 
 GoXAvni Commerce is a multi-tenant Next.js App Router application with a Supabase/PostgreSQL foundation. The original frontend remains available as an explicitly isolated development demo. Configured deployments read real catalogs, authenticate with Supabase, and authorize private operations on the server and in PostgreSQL. Payments and order placement are not implemented.
 
@@ -7,6 +7,8 @@ GoXAvni Commerce is a multi-tenant Next.js App Router application with a Supabas
 ```text
 src/
   app/
+    create/                      Authenticated five-step marketplace wizard
+    demo/create, demo/manage     Explicit, non-writing wizard/dashboard previews
     m/[tenant]/[[...segments]]/   Tenant route validation and server authorization
     admin/[[...segments]]/        Protected global administration
     auth/                        Sign-in/up, PKCE callback, email confirmation
@@ -86,7 +88,7 @@ With Supabase configured:
 - Tenant management reads products, sellers, orders, and membership-based customer identifiers. Platform views read marketplaces, profiles, sellers, and order transaction snapshots under global authorization.
 - Buyers read their own orders and participant-authorized messages. Private data never falls back to fixtures.
 
-Some Phase 1 screens remain prototype-only workflows: detailed analytics, payouts, custom domains, disputes, moderation queues, seller onboarding UI/settings, shipping/return settings, profile editing, favorites persistence, and conversation composition. Real-mode routes explicitly identify remaining work instead of fabricating reports or storing business changes in localStorage. The database already defines secure review and conversation/message policies; full UI/API workflows for those resources are deferred. No payments, order-placement API, production order writer, media uploads, or fulfillment are present.
+Some Phase 1 screens remain prototype-only workflows: detailed analytics, payouts, custom domains, disputes, moderation queues, advanced seller settings, shipping/return settings, profile editing, favorites persistence, and conversation composition. Real-mode routes explicitly identify remaining work instead of fabricating reports or storing business changes in localStorage. The database already defines secure review and conversation/message policies; full UI/API workflows for those resources are deferred. No payments, order-placement API, production order writer, or fulfillment are present. Marketplace logos and product primary images are supported.
 
 ## API and money contracts
 
@@ -129,3 +131,39 @@ Migration 004 preserves the architecture and UI while closing private admin read
 New routes: POST `/api/v1/marketplaces` creates caller-owned tenant; POST `/api/v1/marketplaces/:uuid/sellers` applies; PATCH on that route reviews as tenant manager; PATCH `/api/v1/marketplaces/:uuid/cart` replaces a variant quantity. All preserve verified bearer support for Android and common error envelopes. No UI redesign or payment functionality is included.
 
 See [SECURITY.md](docs/SECURITY.md) for the operation-by-operation permission matrix, every definer function, locking strategy, test limitations, and production rate-limit plan. New RPCs are not permission to expose unthrottled public onboarding in production.
+
+## Phase 3 onboarding and management
+
+`/create` authenticates before showing the five-step business/type/branding/currency/review wizard. It sends validated fields to the existing marketplace creation service/RPC; owner identity is never a request field. Creation now atomically produces a **draft** tenant and its owner membership, plus owner seller/store in STORE/HYBRID. USD is the only currency accepted for new tenants; persisted currency fields and string minor-unit contracts remain currency-aware.
+
+Managers can work in draft or active tenants; suspended tenants remain unavailable to ordinary memberships. Anonymous public catalog/image access still requires active status. `/m/:slug/owner/preview` is a server-authorized preview, including optional `?previewProduct=:uuid`; it uses tenant-scoped authenticated projections, filters by mode/category/product/seller visibility, and does not allow purchasing. It is not a public draft token/link.
+
+Owner dashboard counts and launch progress come from tenant database rows and explicit branding/store/preview completion timestamps. Publication is an owner RPC: branding and store information, preview acknowledgement, an active category and an active owner product are required for STORE/HYBRID. MARKETPLACE can publish before inventory exists so third-party sellers can apply; its first-product checklist item remains incomplete until a seller adds one. Saving branding validates current fields, and publish checks current description/hero content rather than trusting timestamps alone.
+
+Focused UI modules include `marketplace-wizard`, `owner-overview`, `category-manager`, `branding-editor`, `seller-applications`, `management-content`, and `management-actions`. `domain/management.ts` holds validation, exact USD parsing and checklist calculation. Services and data-access modules remain independent of React. `sharp` decodes, bounds, strips metadata and normalizes uploads; private Supabase Storage policies enforce tenant/resource access. See [STORAGE.md](docs/STORAGE.md).
+
+New owner pages: `categories`, `listing`, `listing/:uuid`, `preview`, `publish`; branding/setup/store-settings and sellers are now connected editors. Owners/staff may edit authorized tenant products; seller pages derive the seller from the current user. Creation without an owner seller prompts managers to choose an approved seller rather than manufacturing owner inventory in MARKETPLACE mode. Categories use tenant-unique slugs, archive status and numeric display order. SKU edits and product draft/publish/archive changes are transactional with the Original variant.
+
+The public storefront reflects saved logo/name/tagline/accent/hero content; categories, featured/new collections, variant stock and seller descriptions come from the database. Seller application links are hidden for STORE. `/m/:slug/apply` authenticates applicants and displays their own pending/approved/rejected/suspended state. Decisions use the hardened review RPC; public seller pages never display moderation state.
+
+New versioned contracts (all writes enforce origin or verified bearer token):
+
+| Method / tenant-relative endpoint           | Contract                                                                                                  |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| POST `/api/v1/marketplaces`                 | Existing name/slug/mode/currency plus optional tagline/description/location/accent; returns UUID and slug |
+| GET `/api/v1/marketplaces/:uuid/management` | Manager-only marketplace, counts, categories, sellers and recent product summaries                        |
+| GET `.../listings?productId=:uuid`          | Authorized product editor data plus categories; omit ID for the caller's seller catalog                   |
+| GET `.../sellers`                           | Current user's application or null                                                                        |
+| POST `.../categories`                       | Optional id, name, slug, icon, status, sortOrder; creates or updates, including archive                   |
+| POST `.../branding`                         | Name/tagline/description/location/accent/heroHeading/heroDescription                                      |
+| POST `.../setup`                            | action: branding/store/preview/publish/unpublish; owner only                                              |
+| POST `.../assets?productId=:uuid`           | Raw image bytes; omit productId for logo; returns path and authorized image URL                           |
+| GET `.../assets?productId=:uuid`            | RLS-filtered normalized WebP bytes, private no-store response                                             |
+
+Listing POST adds optional SKU and accepts archived status. Amounts remain decimal minor-unit strings; the USD form uses BigInt decimal parsing rather than float multiplication. Management/listing reads preserve SQL text casts. Android can execute the same setup, category, product, application, branding, publication and binary upload operations without React or server actions.
+
+## Future hostname resolution
+
+Current canonical storefront URLs are `/m/:slug`. A future `marketplace_domains` registry will map normalized, verified hosts to marketplace UUIDs, with unique host ownership, pending/verified state and proof of control. Resolve `{slug}.goxavni.com` only on an explicitly configured base domain; reserve platform names such as `www`, `api`, and `admin`. Resolve custom hosts only through the verified registry, never by trusting arbitrary Host/forwarding input or deriving authorization from a hostname. Reject unknown hosts, use trusted proxy forwarding rules, and retain UUID-scoped service/RLS checks after resolution. Extend CSRF allowed origins only for verified tenant domains, and review cookie isolation, TLS and cache keys before rollout. DNS automation, wildcard hosting, custom-domain verification and cookie sharing are not implemented.
+
+Public mobile reads are also available through GET `/api/v1/marketplaces/:uuid` (branding/categories), GET `.../products/:productUuid` (product/variants), and GET `.../stores/:sellerUuid` (public seller description and paginated eligible products). These use anonymous catalog clients, so even a manager token cannot turn the public API into a draft preview.

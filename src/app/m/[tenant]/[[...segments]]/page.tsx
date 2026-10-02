@@ -1,3 +1,12 @@
+import {
+  managedMarketplace,
+  previewCatalog,
+  managedCategories,
+  applicationState,
+} from "@/data-access/management";
+import { SellerApplication } from "@/components/seller-applications";
+import { LiveShell } from "@/components/live-shell";
+import { SetupButton } from "@/components/management-actions";
 import { notFound } from "next/navigation";
 import { marketplaces, categories, products, sellers } from "@/data/mock";
 import { CommerceApp } from "@/components/commerce-app";
@@ -11,6 +20,7 @@ import { Empty } from "@/components/ui";
 import { AppError } from "@/domain/errors";
 import Link from "next/link";
 const simple = [
+  "apply",
   "products",
   "cart",
   "checkout",
@@ -29,6 +39,9 @@ export default async function Page({
     sort?: string;
     page?: string;
     pageSize?: string;
+    seller?: string;
+    previewProduct?: string;
+    category?: string;
   }>;
 }) {
   const { tenant, segments = [] } = await params;
@@ -71,12 +84,21 @@ export default async function Page({
       "analytics",
       "commission",
       "domains",
+      "categories",
+      "listing",
+      "preview",
+      "publish",
     ];
-    if ((id && !views.includes(id)) || segments.length > 2) notFound();
+    if (
+      (id && !views.includes(id)) ||
+      segments.length > (id === "listing" ? 3 : 2)
+    )
+      notFound();
   }
   if (["product", "category", "store"].includes(page) && segments.length !== 2)
     notFound();
   const privatePage = [
+    "apply",
     "seller",
     "owner",
     "orders",
@@ -88,13 +110,16 @@ export default async function Page({
   ].includes(page);
   const path = `/m/${tenant}/${segments.join("/")}`;
   // Real workspaces fail closed even when the public demo is enabled.
-  if (!supabaseConfig() && ["seller", "owner"].includes(page))
+  if (!supabaseConfig() && ["seller", "owner", "apply"].includes(page))
     await protectPage(path);
   if (supabaseConfig()) {
     let live;
     let auth;
     try {
-      live = await findMarketplace(tenant, "slug");
+      if (page === "owner" || page === "seller") {
+        auth = await protectPage(path);
+        live = await managedMarketplace(auth.db, tenant);
+      } else live = await findMarketplace(tenant, "slug");
       if (privatePage) auth = await protectPage(path, live.id, page);
     } catch (error) {
       if (error instanceof AppError) {
@@ -113,6 +138,63 @@ export default async function Page({
       throw error;
     }
     if (auth) {
+      if (page === "apply") {
+        if (live.mode === "STORE")
+          return (
+            <LiveShell m={live}>
+              <Empty
+                title="This store sells its own collection"
+                text="Seller applications are not available."
+              />
+            </LiveShell>
+          );
+        const user = await auth.requireUser();
+        return (
+          <LiveShell m={live}>
+            <section className="section">
+              <SellerApplication
+                tenant={live.id}
+                slug={live.slug}
+                application={await applicationState(auth.db, live.id, user.id)}
+              />
+            </section>
+          </LiveShell>
+        );
+      }
+      if (page === "owner" && id === "preview") {
+        const preview = await previewCatalog(auth.db, live);
+        const categories = await managedCategories(auth.db, live.id);
+        return (
+          <>
+            <div className="preview-toolbar">
+              <Link href={`/m/${live.slug}/owner`}>← Back to workspace</Link>
+              <span>Private storefront preview</span>
+              <SetupButton tenant={live.id} action="preview">
+                Mark preview complete
+              </SetupButton>
+            </div>
+            <LiveStorefront
+              m={live}
+              segments={
+                search.previewProduct
+                  ? ["product", search.previewProduct]
+                  : search.category
+                    ? ["category", search.category]
+                    : []
+              }
+              search={{
+                q: search.q,
+                page: search.page,
+                pageSize: search.pageSize,
+              }}
+              previewProducts={preview}
+              previewCategories={categories.filter(
+                (c) => c.status === "active",
+              )}
+            />
+          </>
+        );
+      }
       if (page === "seller" || page === "owner")
         return (
           <LiveWorkspace
@@ -120,6 +202,7 @@ export default async function Page({
             m={live}
             area={page}
             segments={segments.slice(1)}
+            sellerChoice={search.seller}
           />
         );
       return <LiveAccount m={live} page={page} auth={auth} />;

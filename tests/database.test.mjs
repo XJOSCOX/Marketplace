@@ -1,3 +1,4 @@
+import { storageSchema } from "./storage-schema.mjs";
 // A real embedded PostgreSQL engine exercises constraints and RLS without Docker.
 // The small auth schema below emulates Supabase auth.uid; hosted Auth is tested separately.
 import { PGlite } from "@electric-sql/pglite";
@@ -17,6 +18,7 @@ test("PostgreSQL migrations, tenant constraints, RLS and privilege escalation re
     await db.exec(
       `create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key,aud text,role text,email text,raw_user_meta_data jsonb,created_at timestamptz,updated_at timestamptz); create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; grant usage on schema auth to anon,authenticated; grant execute on function auth.uid() to anon,authenticated;`,
     );
+    await db.exec(storageSchema);
     for (const name of readdirSync("supabase/migrations")
       .filter((n) => n.endsWith(".sql"))
       .sort())

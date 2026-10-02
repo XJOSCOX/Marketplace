@@ -1,5 +1,8 @@
 "use client";
+import Image from "next/image";
 import { useState } from "react";
+import { dollarsToMinor, minorToDollars } from "@/domain/management";
+import { ImageUpload } from "./management-actions";
 import { useRouter } from "next/navigation";
 export interface EditableListing {
   id: string;
@@ -9,6 +12,9 @@ export interface EditableListing {
   price_amount: string;
   status: string;
   stock: number;
+  sku: string;
+  seller_id: string;
+  image_path?: string | null;
 }
 export function LiveListingForm({
   tenant,
@@ -45,7 +51,8 @@ export function LiveListingForm({
                 categoryId: data.get("category"),
                 name: data.get("name"),
                 description: data.get("description"),
-                priceAmount: data.get("amount"),
+                priceAmount: dollarsToMinor(String(data.get("amount"))),
+                sku: data.get("sku") || undefined,
                 stock: Number(data.get("stock")),
                 status: data.get("status"),
               }),
@@ -53,7 +60,8 @@ export function LiveListingForm({
           );
           const json = await response.json();
           if (response.ok) {
-            router.push(base + "/products");
+            router.push(base + "/listing/" + json.data.id);
+            setMessage("Listing saved. You can now upload its primary image.");
             router.refresh();
           } else setMessage(json.error.message);
         } catch {
@@ -82,12 +90,12 @@ export function LiveListingForm({
         />
       </label>
       <label>
-        Price in integer minor units (USD cents)
+        Price (USD)
         <input
           name="amount"
-          inputMode="numeric"
-          pattern="[0-9]+"
-          defaultValue={product?.price_amount || "2500"}
+          inputMode="decimal"
+          pattern="[0-9]+([.][0-9]{1,2})?"
+          defaultValue={minorToDollars(product?.price_amount || "2500")}
           required
         />
       </label>
@@ -97,10 +105,20 @@ export function LiveListingForm({
           name="stock"
           type="number"
           min="0"
-          max="2147483647"
+          max="1000000"
           step="1"
           defaultValue={product?.stock ?? 10}
           required
+        />
+      </label>
+      <label>
+        SKU
+        <input
+          name="sku"
+          maxLength={80}
+          pattern="[A-Za-z0-9._-]+"
+          defaultValue={product?.sku}
+          placeholder="Automatically generated if blank"
         />
       </label>
       <label>
@@ -117,12 +135,35 @@ export function LiveListingForm({
         Visibility
         <select name="status" defaultValue={product?.status || "draft"}>
           <option value="draft">Draft</option>
-          <option value="active">Active</option>
+          <option value="active">Published product</option>
+          <option value="archived">Archived</option>
         </select>
       </label>
-      <button className="button" disabled={pending}>
+      {product?.image_path && (
+        <Image
+          className="editor-image"
+          src={`/api/v1/marketplaces/${tenant}/assets?productId=${product.id}&v=${encodeURIComponent(product.image_path)}`}
+          unoptimized
+          width={240}
+          height={200}
+          alt={product.name}
+        />
+      )}
+      {product ? (
+        <ImageUpload tenant={tenant} productId={product.id} />
+      ) : (
+        <div className="logo-placeholder">
+          ✳<small>Save your listing, then upload a product photo.</small>
+        </div>
+      )}
+      <button className="button" disabled={pending || !categories.length}>
         {pending ? "Saving…" : "Save listing"}
       </button>
+      {!categories.length && (
+        <p className="info-banner">
+          Add an active category before creating a product.
+        </p>
+      )}
       {message && (
         <p role="alert" className="info-banner">
           {message}

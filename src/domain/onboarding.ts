@@ -12,7 +12,16 @@ function title(value: unknown) {
   return value.trim();
 }
 export function marketplaceInput(input: Record<string, unknown>) {
-  fields(input, ["slug", "name", "mode", "currency"]);
+  fields(input, [
+    "slug",
+    "name",
+    "mode",
+    "currency",
+    "tagline",
+    "description",
+    "accent",
+    "location",
+  ]);
   if (typeof input.slug !== "string") invalid();
   const slug = input.slug.trim().toLowerCase();
   if (
@@ -20,10 +29,32 @@ export function marketplaceInput(input: Record<string, unknown>) {
     !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug) ||
     !["STORE", "MARKETPLACE", "HYBRID"].includes(String(input.mode)) ||
     typeof input.currency !== "string" ||
-    !/^[A-Z]{3}$/.test(input.currency)
+    input.currency !== "USD"
+  )
+    invalid();
+  for (const [key, max] of [
+    ["tagline", 300],
+    ["description", 5000],
+    ["location", 200],
+  ] as const) {
+    if (
+      input[key] !== undefined &&
+      (typeof input[key] !== "string" || input[key].length > max)
+    )
+      invalid();
+  }
+  if (
+    input.accent !== undefined &&
+    (typeof input.accent !== "string" || !/^#[0-9a-f]{6}$/i.test(input.accent))
   )
     invalid();
   return {
+    branding: {
+      tagline: input.tagline || "",
+      description: input.description || "",
+      location: input.location || "",
+      accent: input.accent || "#27624c",
+    },
     requested_slug: slug,
     title: title(input.name),
     marketplace_mode: input.mode as string,

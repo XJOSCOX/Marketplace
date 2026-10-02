@@ -1,3 +1,4 @@
+import { storageSchema } from "./storage-schema.mjs";
 import { PGlite } from "@electric-sql/pglite";
 import { readFileSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -15,6 +16,7 @@ test("hardening migration: real PostgreSQL adversarial regression suite", async 
     await db.exec(
       `create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key,aud text,role text,email text,raw_user_meta_data jsonb,created_at timestamptz,updated_at timestamptz); create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$; grant usage on schema auth to anon,authenticated; grant execute on function auth.uid() to anon,authenticated;`,
     );
+    await db.exec(storageSchema);
     for (const file of readdirSync("supabase/migrations")
       .filter((f) => f.endsWith(".sql"))
       .sort())
@@ -131,6 +133,11 @@ test("hardening migration: real PostgreSQL adversarial regression suite", async 
     await t.test(
       "seller lifecycle prevents self approval, impersonation and cross-tenant management",
       async () => {
+        await as("postgres");
+        await db.exec(
+          `update public.marketplaces set status='active' where id='${tenant}'`,
+        );
+
         await as("authenticated", "maya");
         seller = (
           await rows(

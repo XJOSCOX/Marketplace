@@ -1,3 +1,5 @@
+import { ManagementContent, ProductManagement } from "./management-content";
+import { managedCategories } from "@/data-access/management";
 import Link from "next/link";
 import { signOut } from "@/auth/actions";
 import {
@@ -11,7 +13,7 @@ import type { PublicMarketplace } from "@/domain/catalog";
 import { Heading, Empty } from "./ui";
 import { DataTable } from "./data-table";
 import { LiveListingForm, type EditableListing } from "./live-listing-form";
-import { publicCategories } from "@/data-access/catalog";
+
 import { notFound } from "next/navigation";
 import { LiveMarketplaceForm } from "./live-marketplace-form";
 import { AppError } from "@/domain/errors";
@@ -20,11 +22,13 @@ export async function LiveWorkspace({
   m,
   area,
   segments,
+  sellerChoice,
 }: {
   auth: Awaited<ReturnType<typeof authContext>>;
   m?: PublicMarketplace;
   area: "seller" | "owner" | "admin";
   segments: string[];
+  sellerChoice?: string;
 }) {
   const page = segments[0] || "overview";
   const base = area === "admin" ? "/admin" : `/m/${m!.slug}/${area}`;
@@ -56,6 +60,8 @@ export async function LiveWorkspace({
             "store-settings",
             "sellers",
             "products",
+            "categories",
+            "publish",
             "orders",
             "customers",
             "analytics",
@@ -71,9 +77,9 @@ export async function LiveWorkspace({
       return (
         <Empty
           title="Seller onboarding required"
-          text="Ask this marketplace’s owner to approve your seller profile."
-          href={`/m/${m!.slug}`}
-          action="Back to storefront"
+          text="Apply to join this marketplace or check your application status."
+          href={`/m/${m!.slug}/apply`}
+          action="View application"
         />
       );
     await auth.requireSellerAccess(m!.id, data.id);
@@ -99,16 +105,40 @@ export async function LiveWorkspace({
     "marketplaces",
     "users",
   ];
-  const records = supported.includes(recordPage)
-    ? await workspaceRecords(
-        auth.db,
-        recordPage as Parameters<typeof workspaceRecords>[1],
-        m?.id,
-        sellerId,
-      )
-    : null;
-  let editor: React.ReactNode = null;
-  if (area === "owner" && ["setup", "branding", "commission"].includes(page)) {
+  const managed =
+    area === "owner" &&
+    [
+      "overview",
+      "setup",
+      "branding",
+      "store-settings",
+      "categories",
+      "sellers",
+      "products",
+      "listing",
+      "publish",
+    ].includes(page);
+  const records =
+    !managed && supported.includes(recordPage)
+      ? await workspaceRecords(
+          auth.db,
+          recordPage as Parameters<typeof workspaceRecords>[1],
+          m?.id,
+          sellerId,
+        )
+      : null;
+  let editor: React.ReactNode = managed ? (
+    <ManagementContent
+      auth={auth}
+      m={m!}
+      page={page}
+      productId={segments[1]}
+      sellerChoice={sellerChoice}
+    />
+  ) : area === "seller" && page === "products" ? (
+    <ProductManagement auth={auth} m={m!} base={base} seller={sellerId} />
+  ) : null;
+  if (area === "owner" && ["commission"].includes(page)) {
     let allowed = false;
     try {
       await auth.requireMarketplaceRole(m!.id, ["marketplace_owner"]);
@@ -127,7 +157,7 @@ export async function LiveWorkspace({
       );
   }
   if (page === "listing" && sellerId) {
-    const categories = await publicCategories(m!.id);
+    const categories = await managedCategories(auth.db, m!.id);
     let product: EditableListing | undefined;
     if (segments[1]) {
       const data = await editableProduct(auth.db, m!.id, sellerId, segments[1]);
@@ -136,6 +166,7 @@ export async function LiveWorkspace({
     }
     editor = (
       <LiveListingForm
+        key={product?.id || "new"}
         tenant={m!.id}
         seller={sellerId}
         base={base}
@@ -147,7 +178,14 @@ export async function LiveWorkspace({
   return (
     <div className="workspace">
       <aside className="sidebar">
-        <Link className="brand" href={m ? `/m/${m.slug}` : "/"}>
+        <Link
+          className="brand"
+          href={
+            m
+              ? `/m/${m.slug}${m.status === "draft" ? "/owner/preview" : ""}`
+              : "/"
+          }
+        >
           {m?.name || "Commerce"}.
         </Link>
         <p className="workspace-label">{area.toUpperCase()} WORKSPACE</p>
@@ -171,27 +209,20 @@ export async function LiveWorkspace({
       <div className="workspace-body">
         <header className="workspace-top">
           <span>{m?.name || "Platform administration"}</span>
-          <span className="status">Database-authorized access</span>
+          <span className="status">LIVE SUPABASE DATA</span>
         </header>
         <main className="workspace-content">
           <Heading
             eyebrow="YOUR BUSINESS"
             title={
               page === "overview"
-                ? "Your workspace, connected."
+                ? area === "owner"
+                  ? "Welcome to your next chapter."
+                  : "Your seller studio."
                 : page.replaceAll("-", " ")
             }
-            text="Live database records. Access is verified on the server and enforced by row-level security."
+            text={m?.name || "Your business, at a glance."}
           />
-          {area === "seller" && page === "products" && (
-            <Link
-              className="button"
-              style={{ marginBottom: 20 }}
-              href={base + "/listing"}
-            >
-              Create listing
-            </Link>
-          )}
           {editor ||
             (records ? (
               <>

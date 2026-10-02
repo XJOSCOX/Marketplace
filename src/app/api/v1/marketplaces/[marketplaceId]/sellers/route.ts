@@ -1,3 +1,4 @@
+import { ownApplication } from "@/services/management-read";
 import { applySeller, reviewSeller } from "@/services/onboarding";
 import { jsonObject, verifyMutationOrigin } from "@/api/mutations";
 import { errorResponse } from "@/domain/errors";
@@ -30,6 +31,20 @@ export async function PATCH(request: Request, { params }: Context) {
           request,
         ),
       },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ marketplaceId: string }> },
+) {
+  try {
+    return Response.json(
+      { data: await ownApplication((await params).marketplaceId, request) },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {

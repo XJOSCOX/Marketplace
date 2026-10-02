@@ -60,3 +60,13 @@ The legacy demo domain models use decimal display prices and browser-local state
 ## Seller onboarding
 
 `apply_seller` derives the applicant from auth.uid and creates only pending status. `review_seller` requires tenant management, refuses self-approval, and atomically approves membership/store or suspends/rejects the seller. Ordinary seller table mutations are revoked. Membership grants alone never activate a seller. See SECURITY.md for lifecycle details and rate-limit prerequisites.
+
+## Phase 3 permissions
+
+Management now accepts draft or active marketplaces, while still requiring active memberships and true ownership; suspended tenants are denied for ordinary roles. Public queries still require active publication. Marketplace SELECT adds manager visibility of drafts and an authenticated seller-membership policy; neither exposes drafts to anonymous buyers. `/create` requires real authentication, and `/demo/create`/`/demo/manage` make no writes and confer no identity.
+
+Category creation/edit/archive/reorder requires owner/staff. Branding, logo uploads, store completion and publication require owner (or the existing platform-admin exception); staff can preview/catalog-manage but cannot publish or change branding. Listing edits and product uploads use requireSellerAccess plus RLS and path constraints; owner/staff can manage tenant seller listings, sellers only their own. Marketplace-mode eligibility remains derived from actual owner/seller identity. Review and message privacy controls are unchanged.
+
+Publication and completion timestamps are writable only through dedicated checked RPCs, never ordinary settings payloads. API checks are repeated in database policies/functions. Storage private buckets enforce tenant-specific insert/read/delete, prohibit overwrite, and use restrictive guards to constrain unrelated broad policies. See STORAGE.md for precise controls and direct-SDK limitations. All application image reads are decoded/normalized before returning bytes.
+
+Approved seller memberships can read active category definitions in their own draft tenant so unpublishing a storefront does not prevent private inventory editing. Draft/archived category definitions remain manager-only. The Original edition has a unique per-product index to keep transactional listing edits unambiguous.

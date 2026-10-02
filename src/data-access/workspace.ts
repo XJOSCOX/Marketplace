@@ -46,7 +46,9 @@ export async function editableProduct(
 ) {
   const { data, error } = await db
     .from("secure_products")
-    .select("id,category_id,name,description,price_amount,status")
+    .select(
+      "id,seller_id,category_id,name,description,price_amount,status,image_path",
+    )
     .eq("marketplace_id", tenant)
     .eq("seller_id", seller)
     .eq("id", id)
@@ -60,7 +62,7 @@ export async function editableProduct(
   if (!data) return null;
   const { data: variant, error: variantError } = await db
     .from("secure_product_variants")
-    .select("stock")
+    .select("stock,sku")
     .eq("marketplace_id", tenant)
     .eq("product_id", data.id)
     .eq("name", "Original")
@@ -75,6 +77,7 @@ export async function editableProduct(
     ...data,
     price_amount: data.price_amount,
     stock: variant?.stock || 0,
+    sku: variant?.sku || "",
   };
 }
 // Explicit table/column allowlist: never forward a client-supplied table or arbitrary select.

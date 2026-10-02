@@ -56,6 +56,8 @@ const routes = [
   "/m/makers",
   "/auth/sign-in",
   "/auth/sign-up",
+  "/demo/create",
+  "/demo/manage",
 ];
 for (const path of routes) {
   const res = await fetch(base + path, { redirect: "manual" });
@@ -69,6 +71,12 @@ for (const path of [
 ])
   assert.equal((await fetch(base + path)).status, 404, path);
 for (const path of [
+  "/create",
+  "/m/goxavni/owner/categories",
+  "/m/goxavni/owner/listing",
+  "/m/goxavni/owner/preview",
+  "/m/goxavni/owner/publish",
+  "/m/goxavni/apply",
   ...seller.map((p) => "/m/goxavni/seller" + p),
   ...owner.map((p) => "/m/goxavni/owner" + p),
   ...admin.map((p) => "/admin" + p),
@@ -83,10 +91,16 @@ for (const path of [
 const id = "11111111-1111-4111-a111-111111111111";
 for (const [path, status, code] of [
   [`/api/v1/marketplaces/${id}/products`, 503, "BACKEND_NOT_CONFIGURED"],
+  [`/api/v1/marketplaces/${id}`, 503, "BACKEND_NOT_CONFIGURED"],
+  [`/api/v1/marketplaces/${id}/products/${id}`, 503, "BACKEND_NOT_CONFIGURED"],
+  [`/api/v1/marketplaces/${id}/stores/${id}`, 503, "BACKEND_NOT_CONFIGURED"],
   ["/api/v1/marketplaces/goxavni/products", 400, "INVALID_ID"],
   [`/api/v1/marketplaces/${id}/products?page=0`, 400, "INVALID_PAGINATION"],
   ["/api/v1/me", 401, "UNAUTHENTICATED"],
   [`/api/v1/marketplaces/${id}/cart`, 401, "UNAUTHENTICATED"],
+  [`/api/v1/marketplaces/${id}/management`, 401, "UNAUTHENTICATED"],
+  [`/api/v1/marketplaces/${id}/sellers`, 401, "UNAUTHENTICATED"],
+  [`/api/v1/marketplaces/${id}/listings`, 401, "UNAUTHENTICATED"],
 ]) {
   const response = await fetch(base + path);
   assert.equal(response.status, status, path);
@@ -129,5 +143,5 @@ for (const [path, method, body] of [
   assert.equal((await tokenResponse.json()).error.code, "UNAUTHENTICATED");
 }
 console.log(
-  `Passed ${routes.length} public/demo/auth routes, 27 protected redirects, negative routes, and fail-closed API checks.`,
+  `Passed ${routes.length} public/demo/auth routes, 33 protected redirects, negative routes, and fail-closed API checks.`,
 );

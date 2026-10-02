@@ -41,3 +41,7 @@ With an unconfigured development server running: `npm run test:smoke` checks 42 
 - [Architecture](ARCHITECTURE.md)
 - [Database and setup](docs/DATABASE.md)
 - [Authorization and RLS](docs/AUTHORIZATION.md)
+
+Phase 3 adds `/create`, a real owner launch checklist, category/product/branding management, seller applications and private Storage-backed images. Apply migrations 005 and 006 before using live mode. Preview the same onboarding UI without a backend at `/demo/create` and the read-only dashboard at `/demo/manage`.
+
+See [Storage setup](docs/STORAGE.md) and the [Phase 3 manual test guide](docs/PHASE3-TESTING.md). Supabase Auth/Storage integration still requires a configured project; no payments or checkout are enabled.

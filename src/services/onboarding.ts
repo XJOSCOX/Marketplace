@@ -21,7 +21,7 @@ export async function createMarketplace(
       "MARKETPLACE_REJECTED",
       "Marketplace creation failed. Check the slug and fields.",
     );
-  return { id: data };
+  return { id: data, slug: args.requested_slug };
 }
 export async function applySeller(
   tenant: string,

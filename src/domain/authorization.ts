@@ -46,7 +46,8 @@ export function authorization(store: AuthorizationStore) {
     if (
       !membership ||
       membership.status !== "active" ||
-      marketplace?.status !== "active"
+      !marketplace ||
+      !["draft", "active"].includes(marketplace.status)
     )
       throw new AppError(
         403,

@@ -22,12 +22,13 @@ export async function saveListing(
     amount: body.priceAmount,
     inventory: body.stock,
     visibility: body.status,
+    sku_code: body.sku,
   });
   if (error)
     throw new AppError(
       409,
       "LISTING_REJECTED",
-      "The listing could not be saved. Check the category and seller access.",
+      "The listing could not be saved. Check the category, seller access and SKU uniqueness.",
     );
   return { id: data };
 }

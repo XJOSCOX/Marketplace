@@ -6,7 +6,7 @@ import type { pagination } from "@/domain/api";
 export async function publicSeller(tenant: string, id: string) {
   const { data, error } = await publicClient()
     .from("sellers")
-    .select("id,name")
+    .select("id,name,description,location")
     .eq("marketplace_id", tenant)
     .eq("id", id)
     .maybeSingle();
@@ -25,7 +25,9 @@ export async function findMarketplace(
   const db = publicClient();
   const { data, error } = await db
     .from("marketplaces")
-    .select("id,slug,name,tagline,mode,accent,currency")
+    .select(
+      "id,slug,name,tagline,mode,accent,currency,status,description,location,hero_heading,hero_description,logo_path,branding_completed_at,store_completed_at,previewed_at",
+    )
     .eq(by, identifier)
     .eq("status", "active")
     .maybeSingle();
@@ -106,7 +108,9 @@ export async function catalogProducts(
     categoryId: p.category_id,
     name: p.name,
     description: p.description,
-    imageUrl: p.image_url,
+    imageUrl: p.image_path
+      ? `/api/v1/marketplaces/${tenant}/assets?productId=${p.id}&v=${encodeURIComponent(p.image_path)}`
+      : p.image_url,
     priceAmount: p.price_amount,
     currency: p.currency,
     variants: (variants.data || [])
@@ -128,6 +132,7 @@ export async function publicCategories(tenant: string) {
     .select("id,slug,name,icon")
     .eq("marketplace_id", tenant)
     .eq("status", "active")
+    .order("sort_order")
     .order("name");
   if (error)
     throw new AppError(

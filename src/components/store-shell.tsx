@@ -27,7 +27,7 @@ export function StoreShell({
         <span>
           A little discovery goes a long way. Find your next favorite.
         </span>
-        <Link href={`${base}/owner`}>
+        <Link href="/create">
           Build your own marketplace <span>↗</span>
         </Link>
       </div>

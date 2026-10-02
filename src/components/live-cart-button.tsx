@@ -9,7 +9,9 @@ export function AddToCart({
   tenant: string;
   product: CatalogProduct;
 }) {
-  const [variant, setVariant] = useState(product.variants[0]?.id || "");
+  const [variant, setVariant] = useState(
+    product.variants.find((v) => v.stock > 0)?.id || "",
+  );
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
   return (
