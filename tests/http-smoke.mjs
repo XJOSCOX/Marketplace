@@ -94,6 +94,40 @@ for (const [path, status, code] of [
   assert.equal(json.error.code, code);
   assert.equal(json.data, undefined);
 }
+for (const [path, method, body] of [
+  [
+    "/api/v1/marketplaces",
+    "POST",
+    { slug: "test", name: "Test", mode: "HYBRID", currency: "USD" },
+  ],
+  [
+    `/api/v1/marketplaces/${id}/sellers`,
+    "POST",
+    { name: "Test", description: "" },
+  ],
+  [
+    `/api/v1/marketplaces/${id}/sellers`,
+    "PATCH",
+    { sellerId: id, decision: "active" },
+  ],
+  [`/api/v1/marketplaces/${id}/cart`, "PATCH", { variantId: id, quantity: 1 }],
+]) {
+  const options = {
+    method,
+    headers: {
+      "content-type": "application/json",
+      origin: "https://untrusted.invalid",
+    },
+    body: JSON.stringify(body),
+  };
+  assert.equal((await fetch(base + path, options)).status, 403, path);
+  const tokenResponse = await fetch(base + path, {
+    ...options,
+    headers: { ...options.headers, authorization: "Bearer test-token" },
+  });
+  assert.equal(tokenResponse.status, 401, path);
+  assert.equal((await tokenResponse.json()).error.code, "UNAUTHENTICATED");
+}
 console.log(
   `Passed ${routes.length} public/demo/auth routes, 27 protected redirects, negative routes, and fail-closed API checks.`,
 );

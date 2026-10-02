@@ -1,8 +1,20 @@
 "use server";
+import { headers } from "next/headers";
+import { verifyMutationOrigin } from "@/api/mutations";
+import { AppError } from "@/domain/errors";
 import { redirect } from "next/navigation";
 import { serverClient } from "@/lib/supabase/server";
 import { supabaseConfig } from "@/lib/supabase/config";
 import { safeNext } from "@/domain/api";
+async function verifyActionOrigin() {
+  const incoming = await headers();
+  // Server Actions always use cookies; an Authorization header cannot bypass CSRF.
+  verifyMutationOrigin(
+    new Request("http://localhost", {
+      headers: { origin: incoming.get("origin") || "" },
+    }),
+  );
+}
 export interface AuthResult {
   message: string;
 }
@@ -15,6 +27,13 @@ export async function authenticate(
       message:
         "Authentication is unavailable until Supabase is configured. Demo data does not grant access.",
     };
+  try {
+    await verifyActionOrigin();
+  } catch {
+    return { message: "This request origin is not permitted." };
+  }
+  if (!["signup", "signin"].includes(String(form.get("mode"))))
+    return { message: "Invalid authentication action." };
   const email = String(form.get("email") || "").trim();
   const password = String(form.get("password") || "");
   const signup = form.get("mode") === "signup";
@@ -70,9 +89,16 @@ export async function authenticate(
   redirect(next);
 }
 export async function signOut() {
+  await verifyActionOrigin();
   if (supabaseConfig()) {
     const db = await serverClient();
-    await db.auth.signOut();
+    const { error } = await db.auth.signOut();
+    if (error)
+      throw new AppError(
+        503,
+        "SIGNOUT_FAILED",
+        "Sign out failed. Please try again.",
+      );
   }
   redirect("/auth/sign-in");
 }

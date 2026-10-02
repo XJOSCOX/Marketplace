@@ -26,7 +26,7 @@ export function validateListing(input: Record<string, unknown>) {
     input.description.length > 10000 ||
     !Number.isInteger(input.stock) ||
     Number(input.stock) < 0 ||
-    Number(input.stock) > 2147483647 ||
+    Number(input.stock) > 1000000 ||
     !["active", "draft"].includes(String(input.status))
   )
     throw new AppError(

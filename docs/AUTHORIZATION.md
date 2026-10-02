@@ -27,27 +27,13 @@ This follows the [Supabase SSR client/session guidance](https://supabase.com/doc
 - `requireSellerAccess(tenant, seller)`
 - `requirePlatformAdmin()`
 
-Caller-supplied IDs identify a requested resource; they do not prove permission. Seller workspaces derive their seller ID from the current verified user. Listing APIs accept a resource seller ID only after `requireSellerAccess`. Marketplace settings, including commission, require owner or database-admin authorization. Staff may manage catalog resources but cannot grant roles or change owner-only settings. Only a trusted database operator bootstraps owner/global-admin privileges. Tenant owners can grant buyer/seller/staff membership but cannot manufacture another owner membership.
+Caller-supplied IDs identify a requested resource; they do not prove permission. Seller workspaces derive their seller ID from the current verified user. Listing APIs accept a resource seller ID only after `requireSellerAccess`. Marketplace settings, including commission, require owner or database-admin authorization. Staff may manage catalog resources but cannot grant roles or change owner-only settings. Marketplace creation atomically provisions the signed-in owner through `create_marketplace`; only a trusted database operator bootstraps global-admin privileges. Tenant owners can grant buyer/seller/staff membership but cannot manufacture another owner membership.
 
 ## RLS matrix
 
-RLS is enabled on every application base table. Grants and policies both matter. Permission helpers use `SECURITY DEFINER`, an empty `search_path`, schema-qualified references, and a private schema that is not exposed through PostgREST. They derive the subject from `auth.uid()` and never accept a claimed user role. Helpers prevent policy recursion when checking memberships and conversation participants. Other than the narrowly scoped profile/conversation/cart functions, resource mutations run as the caller under RLS.
+The complete per-table SELECT/INSERT/UPDATE/DELETE matrix, definer audit, and RPC permissions are in [SECURITY.md](SECURITY.md). Every application table has RLS; table grants also deny operations such as order writes, seller identity writes, and direct cart quantity writes. Admins have no private message or cart read override.
 
-| Data                         | Public                         | Buyer                               | Seller                           | Owner/staff                                         | Platform admin                                                        |
-| ---------------------------- | ------------------------------ | ----------------------------------- | -------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------- |
-| Marketplace/category/catalog | Active eligible public records | Same                                | Own drafts + public              | Own tenant                                          | All authorized management records                                     |
-| Seller/store                 | Active mode-eligible profiles  | Same                                | Own authorized seller/store      | Own tenant                                          | Global                                                                |
-| Profiles                     | None                           | Own profile; name/avatar edits      | Own                              | Own (no unrelated personal profile data)            | Global read                                                           |
-| Memberships                  | None                           | Own                                 | Own                              | Tenant read; owner can manage non-owner memberships | Tenant management through policies; owner/bootstrap rules still apply |
-| Carts/items                  | None                           | Own only                            | Own buyer cart only              | Own buyer cart only                                 | Global read, not another buyer's cart mutation                        |
-| Orders                       | None                           | Own                                 | No unrelated order header access | Tenant read                                         | Global read                                                           |
-| Order items                  | None                           | Own order items                     | Attributable seller items only   | Tenant read                                         | Global read                                                           |
-| Reviews                      | Public product reviews         | Own writes after delivered purchase | Buyer rules                      | Tenant moderation deletion                          | Moderation deletion                                                   |
-| Conversations/messages       | None                           | Participants only                   | Participants only                | Participants only                                   | Global read                                                           |
-
-Authenticated clients cannot create/update financial order records at all. A seller sees its order lines, not another seller's lines or the buyer's entire multi-seller order. Message inserts require both current-user sender identity and participation. Direct participant inserts are not granted, preventing a user from joining an arbitrary private conversation. `start_conversation()` validates an eligible tenant seller and adds only the caller and that seller's user atomically.
-
-See [Supabase RLS guidance](https://supabase.com/docs/guides/database/postgres/row-level-security) and the migration SQL for the exact policies. Public catalog views use `security_invoker=true` and explicit public eligibility checks so signed-in privileged users do not accidentally expose drafts through the public catalog contract.
+Public and authenticated monetary DTO views use `security_invoker=true`; they do not bypass caller RLS. Seller order reads expose attributable lines, not unrelated order headers/items. Conversation/message reads require actual participation. No manager or platform-admin moderation access is implied.
 
 ## Marketplace modes
 
@@ -63,10 +49,14 @@ Public products also require an active category and marketplace. Variant display
 
 The application uses only a public publishable/legacy anon key, even on the server; user-scoped clients preserve RLS. No service-role client exists. `.env.local` and other environment files are ignored, with only `.env.example` allowed. Public configuration rejects `sb_secret_` keys and legacy JWTs with non-anon roles.
 
-Cookie-based JSON mutations require `Origin` to exactly match `APP_ORIGIN`; mobile bearer requests authenticate independently and do not depend on browser origin. Server actions use Next.js action-origin protections. JSON bodies have a 16 KiB bound, mutations use explicit field allowlists, UUIDs/pagination/amounts are validated, and database errors map to fixed public error envelopes. Responses carrying private data are not cacheable. Supabase Auth provides its own auth rate controls; broader application throttling, CAPTCHA policy, audit event storage, and abuse workflows remain deployment/Phase 3 work.
+Cookie-based JSON mutations require `Origin` to exactly match `APP_ORIGIN`; mobile bearer requests authenticate independently and do not depend on browser origin. Server actions additionally enforce APP_ORIGIN on cookie writes alongside Next.js action-origin protections. JSON bodies have a 16 KiB bound, mutations use explicit field allowlists, UUIDs/pagination/amounts are validated, and database errors map to fixed public error envelopes. Responses carrying private data are not cacheable. Supabase Auth provides its own auth rate controls; broader application throttling, CAPTCHA policy, audit event storage, and abuse workflows remain deployment/Phase 3 work.
 
 ## Demo separation
 
 Without Supabase, development builds can render the original labeled public demo and `/demo/...` workspaces. Production requires explicit `ALLOW_DEMO=true` to enable those fixture views. Real `/m/:tenant/seller`, `/m/:tenant/owner`, and `/admin` routes still require real authentication and never accept localStorage identities. JSON APIs never use mock records as an authentication or database fallback. If Supabase is configured but unreachable, the app returns an error, not demo data. `/demo` is disabled when Supabase is configured.
 
 The legacy demo domain models use decimal display prices and browser-local state; they are not the production contracts and are never used to authorize or calculate real cart totals.
+
+## Seller onboarding
+
+`apply_seller` derives the applicant from auth.uid and creates only pending status. `review_seller` requires tenant management, refuses self-approval, and atomically approves membership/store or suspends/rejects the seller. Ordinary seller table mutations are revoked. Membership grants alone never activate a seller. See SECURITY.md for lifecycle details and rate-limit prerequisites.

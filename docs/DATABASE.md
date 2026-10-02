@@ -36,32 +36,34 @@ Configure hosted Auth Site URL and allowed callback URLs to your actual deployme
 | File                        | Responsibility                                                                                                        |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `202610020001_commerce.sql` | Tables, constraints, indexes, profile trigger, immutable identities, RLS, public catalog views, conversation creation |
-| `202610020002_cart.sql`     | Atomic authenticated cart additions with tenant/mode/stock validation                                                 |
+| `202610020002_cart.sql`     | Original atomic cart additions (superseded by hardening shared add/set implementation)                                |
 | `202610020003_listings.sql` | Transactional seller-authorized listing and Original variant creation/update                                          |
+
+Migration `202610020004_security_hardening.sql` adds onboarding RPCs, participant-only privacy, strict validation, locked cart set/add operations, restricted grants, and authenticated monetary DTO views. It validates existing rows: incompatible legacy data must be reviewed and corrected before applying; nothing is silently truncated. See [SECURITY.md](SECURITY.md) for the full matrix and definer inventory.
 
 ## Schema
 
 All resource primary keys are UUIDs. Timestamps use `timestamptz`; applicable mutable tables maintain `updated_at` with a trigger. Tenant records carry `marketplace_id`. Public slugs are routing conveniences; authorization and APIs use stable UUIDs.
 
-| Table                       | Purpose and tenant boundary                                                       |
-| --------------------------- | --------------------------------------------------------------------------------- |
-| `profiles`                  | Global identity, PK references `auth.users`; display name/avatar only             |
-| `platform_admins`           | Global administrator allowlist, provisioned only by trusted SQL; no client writes |
-| `marketplaces`              | Tenant, owner identity, mode, status, brand, currency, commission basis points    |
-| `marketplace_memberships`   | User + tenant, active/suspended status and an array of tenant roles               |
-| `sellers`                   | Tenant-specific selling business tied to one user; active/pending/suspended       |
-| `stores`                    | Public storefront for one tenant seller                                           |
-| `categories`                | Tenant catalog taxonomy and public status                                         |
-| `products`                  | Tenant + seller + category, listing status, base amount/currency                  |
-| `product_variants`          | Tenant + product, SKU, inventory, amount/currency, visibility                     |
-| `carts`                     | One cart per authenticated user per tenant                                        |
-| `cart_items`                | Cart + product + variant + positive integer quantity; no stored client prices     |
-| `orders`                    | Buyer, tenant, status, immutable monetary snapshots; client writes disabled       |
-| `order_items`               | Tenant-safe order/product/variant/seller attribution and monetary snapshots       |
-| `reviews`                   | One buyer review per tenant/product; writes require a delivered purchase          |
-| `conversations`             | Tenant + seller and creator; participants control access                          |
-| `conversation_participants` | Conversation/user membership; no direct client mutation                           |
-| `messages`                  | Tenant + conversation + sender participant; append-only for clients               |
+| Table                       | Purpose and tenant boundary                                                          |
+| --------------------------- | ------------------------------------------------------------------------------------ |
+| `profiles`                  | Global identity, PK references `auth.users`; display name/avatar only                |
+| `platform_admins`           | Global administrator allowlist, provisioned only by trusted SQL; no client writes    |
+| `marketplaces`              | Tenant, owner identity, mode, status, brand, currency, commission basis points       |
+| `marketplace_memberships`   | User + tenant, active/suspended status and an array of tenant roles                  |
+| `sellers`                   | Tenant-specific selling business tied to one user; active/pending/suspended/rejected |
+| `stores`                    | Public storefront for one tenant seller                                              |
+| `categories`                | Tenant catalog taxonomy and public status                                            |
+| `products`                  | Tenant + seller + category, listing status, base amount/currency                     |
+| `product_variants`          | Tenant + product, SKU, inventory, amount/currency, visibility                        |
+| `carts`                     | One cart per authenticated user per tenant                                           |
+| `cart_items`                | Cart + product + variant + positive integer quantity; no stored client prices        |
+| `orders`                    | Buyer, tenant, status, immutable monetary snapshots; client writes disabled          |
+| `order_items`               | Tenant-safe order/product/variant/seller attribution and monetary snapshots          |
+| `reviews`                   | One buyer review per tenant/product; writes require a delivered purchase             |
+| `conversations`             | Tenant + seller and creator; participants control access                             |
+| `conversation_participants` | Conversation/user membership; no direct client mutation                              |
+| `messages`                  | Tenant + conversation + sender participant; append-only for clients                  |
 
 Composite FKs tie `(marketplace_id, seller_id)`, `(marketplace_id, category_id)`, `(marketplace_id, product_id)`, and `(marketplace_id, conversation_id)` to their parent rows. Additional product/seller and product/variant composite FKs prevent an order item from attributing a product to the wrong seller, even inside the same tenant. A message's sender must be a participant of its exact tenant/conversation. Currency FKs keep variant, product, marketplace, and order currencies consistent. Identity/ownership columns are immutable on update, preventing resource reassignment after authorization. Ownership transfer requires a separately reviewed migration/workflow; it is not a settings form feature.
 
@@ -83,7 +85,13 @@ insert into public.platform_admins(user_id)
 values ('YOUR_CONFIRMED_AUTH_USER_UUID'::uuid);
 ```
 
-This grants global permissions to that specific user and is deliberately not exposed by the application. To test an ordinary seller, provision a marketplace membership with `roles = array['buyer','seller']`, then an active seller row with that same user and marketplace ID using trusted SQL. Create a store row referencing that seller. Do not edit the fixture owners to attach a real account. To test an ordinary owner, create a new marketplace with your confirmed user's `owner_user_id` and a matching active membership containing `marketplace_owner`; bootstrap this using trusted SQL, then use the owner UI. Never put role claims in signup metadata.
+This grants global permissions to that specific user and is deliberately not exposed by the application.
+
+For ordinary ownership, sign in and call `POST /api/v1/marketplaces` with `{ "slug": "my-shop", "name": "My shop", "mode": "HYBRID", "currency": "USD" }`. The service calls `create_marketplace`; caller identity becomes owner and owner membership/seller/store are created atomically as applicable. Supply the exact Origin header for cookies or a verified bearer token for mobile/API use.
+
+For seller onboarding, `POST /api/v1/marketplaces/:uuid/sellers` accepts `{ "name": "My brand", "description": "Independent products" }` and creates a pending application for the caller. A different tenant owner/staff user calls `PATCH` on the same URL with `{ "sellerId": "UUID", "decision": "active" }`; decisions also include `suspended` and `rejected`. Direct seller identity writes are no longer available. These endpoints have no new UI in this hardening phase. Bootstrap real test users through Auth, not fixture passwords or signup roles.
+
+All app monetary reads use `catalog_*` or `secure_*` security-invoker text projections. Persisted amounts remain capped at MAX_SAFE_INTEGER; derived cart totals may exceed it and remain BigInt/string. Do not consume raw base-table monetary JSON in mobile or application code.
 
 ## Verification
 

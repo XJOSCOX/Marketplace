@@ -73,6 +73,7 @@ export async function addCartItem(
   tenant: string,
   body: Record<string, unknown>,
   request: Request,
+  replace = false,
 ) {
   requireUuid(tenant);
   if (
@@ -90,11 +91,16 @@ export async function addCartItem(
   requireUuid(body.variantId);
   const auth = await authContext(request);
   await auth.requireUser();
-  const { data, error } = await auth.db.rpc("add_cart_item", {
-    tenant,
-    variant: body.variantId,
-    quantity_to_add: body.quantity,
-  });
+  const { data, error } = await auth.db.rpc(
+    replace ? "set_cart_item" : "add_cart_item",
+    {
+      tenant,
+      variant: body.variantId,
+      ...(replace
+        ? { quantity_value: body.quantity }
+        : { quantity_to_add: body.quantity }),
+    },
+  );
   if (error)
     throw new AppError(
       409,

@@ -45,7 +45,7 @@ export async function editableProduct(
   id: string,
 ) {
   const { data, error } = await db
-    .from("products")
+    .from("secure_products")
     .select("id,category_id,name,description,price_amount,status")
     .eq("marketplace_id", tenant)
     .eq("seller_id", seller)
@@ -59,7 +59,7 @@ export async function editableProduct(
     );
   if (!data) return null;
   const { data: variant, error: variantError } = await db
-    .from("product_variants")
+    .from("secure_product_variants")
     .select("stock")
     .eq("marketplace_id", tenant)
     .eq("product_id", data.id)
@@ -73,14 +73,14 @@ export async function editableProduct(
     );
   return {
     ...data,
-    price_amount: String(data.price_amount),
+    price_amount: data.price_amount,
     stock: variant?.stock || 0,
   };
 }
 // Explicit table/column allowlist: never forward a client-supplied table or arbitrary select.
 const views = {
   products: {
-    table: "products",
+    table: "secure_products",
     columns: "id,name,status,price_amount,currency,seller_id",
     labels: [
       "ID",
@@ -92,7 +92,7 @@ const views = {
     ],
   },
   inventory: {
-    table: "product_variants",
+    table: "secure_product_variants",
     columns: "id,name,sku,stock,price_amount,currency",
     labels: [
       "ID",
@@ -109,7 +109,7 @@ const views = {
     labels: ["ID", "Name", "Status", "Marketplace"],
   },
   orders: {
-    table: "orders",
+    table: "secure_orders",
     columns: "id,status,total_amount,currency,created_at",
     labels: [
       "ID",
@@ -120,7 +120,7 @@ const views = {
     ],
   },
   "seller-orders": {
-    table: "order_items",
+    table: "secure_order_items",
     columns: "id,order_id,name,quantity,subtotal_amount,currency,seller_id",
     labels: [
       "ID",
@@ -167,7 +167,7 @@ export async function workspaceRecords(
     query = query.eq("seller_id", sellerId);
   if (sellerId && page === "inventory") {
     const { data, error } = await db
-      .from("products")
+      .from("secure_products")
       .select("id")
       .eq("marketplace_id", tenant!)
       .eq("seller_id", sellerId);

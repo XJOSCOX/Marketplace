@@ -37,7 +37,7 @@ export function safeNext(value: string | null | undefined) {
   return value &&
     value.startsWith("/") &&
     !value.startsWith("//") &&
-    !/[\\\r\n]/.test(value) &&
+    !/[\\\x00-\x20\x7f]/.test(value) &&
     !value.includes("%") &&
     !value.startsWith("/auth")
     ? value

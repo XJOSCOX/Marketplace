@@ -80,13 +80,13 @@ With Supabase configured:
 
 - Public homepage, categories, paginated/searchable catalog, product details, variants, and seller storefronts read real rows.
 - Sign-up, sign-in, confirmation, sign-out, session refresh, and server-guarded workspaces are connected.
-- Authenticated carts support atomic additions, removals, own-cart reads, and exact database-derived totals. Cart additions do not reserve stock.
+- Authenticated carts support atomic additions, quantity replacement, removals, own-cart reads, and exact database-derived totals. Cart additions do not reserve stock.
 - Sellers can create/edit their own listings and Original variant price/stock through a transactional RPC. Inventory and attributable order lines are live reads.
 - Owners/admins can update branding, operating mode, and commission basis points. Staff cannot modify owner-only settings.
 - Tenant management reads products, sellers, orders, and membership-based customer identifiers. Platform views read marketplaces, profiles, sellers, and order transaction snapshots under global authorization.
 - Buyers read their own orders and participant-authorized messages. Private data never falls back to fixtures.
 
-Some Phase 1 screens remain prototype-only workflows: detailed analytics, payouts, custom domains, disputes, moderation queues, seller onboarding/settings, shipping/return settings, profile editing, favorites persistence, and conversation composition. Real-mode routes explicitly identify remaining work instead of fabricating reports or storing business changes in localStorage. The database already defines secure review and conversation/message policies; full UI/API workflows for those resources are deferred. No payments, order-placement API, production order writer, media uploads, or fulfillment are present.
+Some Phase 1 screens remain prototype-only workflows: detailed analytics, payouts, custom domains, disputes, moderation queues, seller onboarding UI/settings, shipping/return settings, profile editing, favorites persistence, and conversation composition. Real-mode routes explicitly identify remaining work instead of fabricating reports or storing business changes in localStorage. The database already defines secure review and conversation/message policies; full UI/API workflows for those resources are deferred. No payments, order-placement API, production order writer, media uploads, or fulfillment are present.
 
 ## API and money contracts
 
@@ -102,7 +102,7 @@ Some Phase 1 screens remain prototype-only workflows: detailed analytics, payout
 
 Success responses contain `{ data }`, with catalog `{ meta: { marketplaceId, currency, page, pageSize, total, hasNext, source } }`. Errors are `{ error: { code, message } }` with appropriate status and no raw database details. Catalog sorting uses `created_at` plus ID for deterministic offset pagination. Default page size is 20, maximum 100, and page number is capped at 10,000. UUID resource IDs replace fixture names at real API boundaries. APIs never use demo fallback data.
 
-Canonical money is PostgreSQL BIGINT in integer minor units. Public DTOs encode amounts as decimal strings; services use `BigInt` arithmetic and currency exponents for display. SQL bounds direct-driver values to the exact JavaScript integer range. See [DATABASE.md](docs/DATABASE.md) for constraints. Legacy floating-point prototype display models remain exclusively in the isolated demo, not production services.
+Canonical money is PostgreSQL BIGINT in integer minor units. Public and authenticated DTO views cast money in SQL and encode amounts as decimal strings; services use `BigInt` arithmetic and currency exponents for display. SQL bounds direct-driver values to the exact JavaScript integer range. See [DATABASE.md](docs/DATABASE.md) for constraints. Legacy floating-point prototype display models remain exclusively in the isolated demo, not production services.
 
 ## Demo compatibility
 
@@ -121,3 +121,11 @@ The current server layer can stay inside Next.js or move to a separate service b
 Run `npm run lint`, `npm test`, and `npm run build`. `npm test` includes pure authorization/validation tests, the original demo domain tests, and actual migration/RLS/RPC execution in embedded PostgreSQL (PGlite). `npm run test:smoke` checks the unconfigured local demo, private redirects, and safe API failures. `npm run test:integration` is a separate opt-in suite for real Supabase Auth/PostgREST; it skips without explicit environment configuration.
 
 Configure `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `APP_ORIGIN` manually. Optional `ALLOW_DEMO` controls only the unconfigured production demo. No service-role key, password, or JWT secret belongs in the application. Setup and manual migration/bootstrap commands are in [DATABASE.md](docs/DATABASE.md).
+
+## Security hardening follow-up
+
+Migration 004 preserves the architecture and UI while closing private admin read overrides, restricting seller and cart direct writes, and adding database validation. `src/services/onboarding.ts` and `src/domain/onboarding.ts` expose validated atomic marketplace creation and seller application/review workflows. `src/domain/mutations.ts` contains testable CSRF/body boundaries; auth actions enforce origin independently of proxy.
+
+New routes: POST `/api/v1/marketplaces` creates caller-owned tenant; POST `/api/v1/marketplaces/:uuid/sellers` applies; PATCH on that route reviews as tenant manager; PATCH `/api/v1/marketplaces/:uuid/cart` replaces a variant quantity. All preserve verified bearer support for Android and common error envelopes. No UI redesign or payment functionality is included.
+
+See [SECURITY.md](docs/SECURITY.md) for the operation-by-operation permission matrix, every definer function, locking strategy, test limitations, and production rate-limit plan. New RPCs are not permission to expose unthrottled public onboarding in production.
